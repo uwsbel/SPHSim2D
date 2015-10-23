@@ -1,5 +1,5 @@
-function [Pos, Vel, VelHalf, Acc, Rho_RhoHalf_dRho] = Step(Pos, Vel, VelHalf, Acc, Rho_RhoHalf_dRho, params, stepTerm)
-%step 
+function [Pos, Vel, VelHalf, Acc, Rho_RhoHalf_dRho] = ParallelStep(Pos, Vel, VelHalf, Acc, Rho_RhoHalf_dRho, params, stepTerm)
+%ParallelStep 
 %   Performs leap-frog numerical integration
 
     % Assign parameters
@@ -26,8 +26,7 @@ function [Pos, Vel, VelHalf, Acc, Rho_RhoHalf_dRho] = Step(Pos, Vel, VelHalf, Ac
     % thiis part of the code. An if statement would be an overkill because
     % it would be evaluated at every integration step.
     for i = 1:numFluidParticles
-        Vel(1,i) = VelHalf(1,i) + dtHalf*Acc(1,i);
-        Vel(2,i) = VelHalf(2,i) + dtHalf*Acc(2,i);
+        Vel(:,i) = VelHalf(:,i) + dtHalf*Acc(:,i);
         Rho_RhoHalf_dRho(1,i) = Rho_RhoHalf_dRho(2,i) + dtHalf*Rho_RhoHalf_dRho(3,i); 
     end
     
@@ -43,76 +42,69 @@ function [Pos, Vel, VelHalf, Acc, Rho_RhoHalf_dRho] = Step(Pos, Vel, VelHalf, Ac
         rho_i = Rho_RhoHalf_dRho(1,i);
         Pressures(1, i) = calcPressure(rho_i, rho0);
     end
-    Pressures(1, numFluidParticles+1:totalNumParticles) = 100;
-    
+
+    RhoHalf = zeros(3, totalNumParticles);
+    RhoHalf(2,:) = Rho_RhoHalf_dRho(2,:);
     %Loops through all of the fluid particles
-    for i = 1:numFluidParticles
+    parfor i = 1:numFluidParticles
         xAcc_i = 0; % Reset values for every particle
         yAcc_i = 0;
         rho_i = Rho_RhoHalf_dRho(1,i);
         drho_i = 0;
         p_i = Pressures(1, i);
-        x_i = Pos(1,i);
-        y_i = Pos(2,i);
-        vx_i = Vel(1,i);
-        vy_i = Vel(2,i); 
-        
+        r_i = Pos(:,i);
+        v_i = Vel(:,i);
+   
         Neighbor = NeighborList{i,1};
         [numNeighbors, dummy] = size(Neighbor);
         for k = 2:numNeighbors
             j = Neighbor(k);
-                    
-            x_j = Pos(1,j);
-            y_j = Pos(2,j);
-            dx = x_i - x_j;
-            dy = y_i - y_j;
-            r_ij = [dx; dy];
-            norm_r_ij = norm(r_ij);
-            q = norm_r_ij/h;
+            r_j = Pos(:,j);     
+
+            dr = r_i - r_j;
+
+            norm_dr = norm(dr);
+            q = norm_dr/h;
                 
             rho_j = Rho_RhoHalf_dRho(1,j);
             p_j = Pressures(1, j);  
-            
-            vx_j = Vel(1,j);
-            vy_j = Vel(2,j); 
-            dvx = vx_i - vx_j;
-            dvy = vy_i - vy_j;
-            v_ij = [dvx; dvy];
+            v_j = Vel(:,j);
+            dv = v_i - v_j;
+
 
             dw_ij = dW(q, h); 
-            grad_a_wab = (dw_ij/(h2*q)) * r_ij;       
+            grad_a_wab = (dw_ij/(h2*q)) * dr;       
             rho_bar = (rho_i+rho_j)/2;
-            % Everything is a scalar except unit_r_ij
+            % Everything is a scalar except unit_dr
             pressureTerm = (particleMass*((p_i/(rho_i*rho_i)) + (p_j/(rho_j*rho_j))))...
                             .* grad_a_wab;                
-            muNumerator = particleMass * 2*mu .* (r_ij' * grad_a_wab) .* v_ij;
-            muDenominator = (rho_bar*rho_bar)*(norm_r_ij*norm_r_ij + h2*epsilon);
+            muNumerator = particleMass * 2*mu .* (dr' * grad_a_wab) .* dv;
+            muDenominator = (rho_bar*rho_bar)*(norm_dr*norm_dr + h2*epsilon);
             muTerm = (muNumerator./muDenominator);
             
             xAcc_i = xAcc_i - pressureTerm(1) + muTerm(1);
             yAcc_i = yAcc_i - pressureTerm(2) + muTerm(2);       
-            drho_i = drho_i + (rho_i/rho_j)*particleMass*v_ij'*grad_a_wab;
+            drho_i = drho_i + (rho_i/rho_j)*particleMass*dv'*grad_a_wab;
 
         end
         % Leap frog stuff: 
         % stepTerm = 0.5 for first step. Otherwise stepTerm==1. 
-
-        Acc(1,i) = xAcc_i;
-        Acc(2,i) = yAcc_i + g;
+        Acc(:,i) = [xAcc_i;...
+                    yAcc_i + g];
 
         % Velocity at t+0.5*dt
-        VelHalf(1,i) = VelHalf(1,i) + stepTerm*dt*Acc(1,i);
-        VelHalf(2,i) = VelHalf(2,i) + stepTerm*dt*Acc(2,i);
+        VelHalf(:,i) = VelHalf(:,i) + stepTerm*dt*Acc(:,i);
         
         % rho at t+0.5*dt
-        Rho_RhoHalf_dRhoNext(2,i) = Rho_RhoHalf_dRho(2,i) + stepTerm*dt*drho_i;
-        % dRho
-        Rho_RhoHalf_dRhoNext(3,i) = drho_i;
+        
+        Rho_RhoHalf_dRhoNext(:,i) = RhoHalf(:,i) + [0; stepTerm*dt*drho_i; drho_i];
+        
         % Temporary Position
-        PosNext(1,i) = Pos(1,i) + dt * VelHalf(1,i);
-        PosNext(2,i) = Pos(2,i) + dt * VelHalf(2,i);
+        PosNext(:,i) = Pos(:,i) + dt * VelHalf(:,i);
+
     end
     
+
 
     Pos = PosNext;
     Rho_RhoHalf_dRho = Rho_RhoHalf_dRhoNext;
