@@ -1,10 +1,10 @@
-function [Pos] = DamBreak(numFluidParticlesPerRow, numFluidParticlesPerColumn, h)
+function [] = CavityFlow(boxWidth, boxHeight, h)
 %DamBreakSimulation 
 %   Performs a 2D dam break simulation
+    numFluidParticlesPerColumn = size(h:h:(boxWidth-h),2);
+    numFluidParticlesPerRow = size(h:h:(boxHeight-h),2);
 
-    numFluidParticles = numFluidParticlesPerRow*numFluidParticlesPerColumn; %Filename
-    boxWidth = 2 * numFluidParticlesPerRow * h; 
-    boxHeight = 2 * numFluidParticlesPerColumn * h; 
+    numFluidParticles = numFluidParticlesPerRow * numFluidParticlesPerColumn; %Filename
     
     numSteps = 2000; % Number of frames
     currStep = 0;
@@ -23,11 +23,12 @@ function [Pos] = DamBreak(numFluidParticlesPerRow, numFluidParticlesPerColumn, h
 
     enableSideWalls = 1;
     enableBottomWall = 1;
-    enableTopWall = 0;
+    enableTopWall = 1;
     [PosBoundary, VelBoundary, Rho_RhoHalf_dRhoBoundary]  = initBoundaries(boxWidth, boxHeight, h, enableBottomWall, enableSideWalls, enableTopWall, params.rho0 );
-    [PosFluid, VelFluid, VelHalfFluid, AccFluid, Rho_RhoHalf_dRhoFluid] = initDamBreakFluid( numFluidParticlesPerRow, numFluidParticlesPerColumn, h, params.rho0 );
+    [VelBoundary] = AddTopWallVelocity(PosBoundary,VelBoundary, boxHeight, 1);
+    [PosFluid, VelFluid, VelHalfFluid, AccFluid, Rho_RhoHalf_dRhoFluid] = initCavityFlowFluid( numFluidParticles, boxWidth, boxHeight, h, params.rho0 );
     
-    % drawFrame(PosFluid, PosBoundary, boxWidth, boxHeight);
+    drawFrame(PosFluid, PosBoundary, boxWidth, boxHeight);
     
     Pos = [PosFluid, PosBoundary];
     Vel = [VelFluid, VelBoundary];
